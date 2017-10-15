@@ -1,0 +1,250 @@
+#   Setting Up Apache and VirtualHosts on Mac Sierra 10.12
+
+[TOC]
+
+##  (1) Installing Homebrew
+
+#### (1.1)  Install Homebrew
+```
+ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+```
+
+*   Also installs Xcode Command Line Tools if not already installed
+
+#### (1.2)  Check that `brew` installed correctly:
+
+```
+$ brew --version
+```
+
+*   Should get something like:
+
+```
+Homebrew 1.0.6
+Homebrew/homebrew-core (git revision 1b10; last commit 2016-10-04)
+```
+
+#### (1.3)  Check everything configured correctly:
+
+```
+$ brew doctor
+```
+
+#### (1.4)  Install Brew Taps
+
+*   Extra repos of code to add functionalty
+```
+$ brew tap homebrew/dupes
+$ brew tap homebrew/versions
+$ brew tap homebrew/php
+$ brew tap homebrew/apache
+$ brew tap homebrew/completions
+```
+
+*   Can also
+```
+$ brew untap xxx
+```
+
+#### (1.5)  Update Homebrew
+
+```
+$ brew update4
+```
+
+#### (1.6)   Optional: Enable auto-completion for commands
+
+```
+$ brew install bash-completion
+```
+
+*   Follow any additional steps shown in Terminal, eg adding line to `~/.bash_profile`
+*   Won't work in current tab, start new Terminal or tab
+
+
+##  (2) Installing Apache
+
+#### (2.1)   Stop Apache running
+
+*   launchd can be used instead of cron
+*   launchctl manually starts process from list called plist
+*   launchctl unload removes that process from the list
+
+```
+$ sudo apachectl stop
+$ sudo launchctl unload -w /System/Library/LaunchDaemons/org.apache.httpd.plist 2>/dev/null
+$ brew install httpd24 --with-privileged-ports --with-http2
+```
+
+*   Should see something like:
+
+```
+/usr/local/Cellar/httpd24/2.4.23_2: 212 files, 4.4M, built in 1 minute 45 seconds
+```
+
+*   The path is important as it'll be used in the next step
+*   Can also get path with: `$ which apachectl`
+    *   It's important the path is `/usr/local/` so it can't interfere with system-level software
+    *   Run `$ brew doctor` again, it is likely your `PATH` isn't setup correctly
+*   Note: one tutorial said to do L1:2 before installing Homebrew
+
+#### (2.2)   Assign privileges and start on reboot
+
+```
+$ sudo cp -v /usr/local/Cellar/httpd24/2.4.23_2/homebrew.mxcl.httpd24.plist /Library/LaunchDaemons
+$ sudo chown -v root:wheel /Library/LaunchDaemons/homebrew.mxcl.httpd24.plist
+$ sudo chmod -v 644 /Library/LaunchDaemons/homebrew.mxcl.httpd24.plist
+$ sudo launchctl load /Library/LaunchDaemons/homebrew.mxcl.httpd24.plist
+```
+
+*   Another option for starting on reboot is: `$ sudo brew services start httpd24`
+
+#### (2.3)   Troubleshooting Tips
+
+(a) Can't connect to server: `$ ps -aef | grep httpd`
+
+*   If Apache is up and running you should see few httpd processes
+
+(b) Restart Apache: `$ sudo apachectl -k restart`
+
+*   Check the error logs: `$ tail -f /usr/local/var/log/apache2/error_log`
+
+(c) Check `Listen: 80` is in `\usr/local/etc/apache2/2.4/httpd.conf`
+
+(d) Apache is controlled by `apachectl`, try starting, stopping, and restarting
+
+```
+$ sudo apachectl start
+$ sudo apachectl stop
+$ sudo apachectl -k restart
+```
+
+*   `-k` forces an immediate restart
+
+##  (3) Configuring Apache
+
+#### (3.1)   Start Apache `$ sudo apachectl start`
+
+*   Note: important to use sudo as it opens port 80
+*   Check if it works by going to [http://127.0.0.1](http://127.0.0.1)
+    *   Should see some message etc, eg "It works!"
+
+#### (3.2)   Create new document root for Apache and create an `index.html` file
+
+```
+$ mkdir ~/Sites/foo
+```
+
+#### (3.3)  Get username: `$ whoami`
+
+
+#### (3.4)   Change the document root for Apache
+
+*   This is the folder where Apache looks to serve the file(s) from
+*   The default is `/Library/WebServer/Documents`
+*   Need to edit the Apache configuration file
+
+1.  Make backup of config file: `sudo cp httpd.conf httpd.conf.bak`
+2.  Open the config file: `sudo nano /usr/local/etc/apache2/2.4/httpd.conf`
+3.  Change
+
+```
+DocumentRoot "/Library/WebServer/Documents"
+<Directory "/Library/WebServer/Documents">
+```
+
+to
+
+```
+DocumentRoot /Users/xxx/Sites
+<Directory /Users/xxx/Sites>
+```
+
+*   Note: one tutorial says to use "", another said not to
+
+#### (3.5)  Uncommenting
+
+*   In `<Directory>`, make sure `AllowOverride All` is *uncommented*
+*   `LoadModule rewrite_module libexec/mod_rewrite.so`
+
+
+```
+LoadModule authz_host_module libexec/apache2/mod_authz_host.so
+LoadModule authz_core_module libexec/apache2/mod_authz_core.so
+LoadModule userdir_module libexec/apache2/mod_userdir.so
+LoadModule vhost_alias_module libexec/apache2/mod_vhost_alias.so //
+Include /private/etc/apache2/extra/httpd-userdir.conf
+Include /private/etc/apache2/extra/httpd-vhosts.conf //
+```
+
+#### (3.6)  Change user & group - not all tutorials said this
+
+*   Apache runs as `daemon` user and group, this will cause problems accessing files in the home directory (check this)
+*   Change `User _www` to `User xxx` or admin
+*   Change `Group _www` to `Group staff`
+
+#### (3.7)  Restart Apache: `$ sudo apachectl -k restart`
+
+#### (3.8)  Check all is well: [http://127.0.0.1](http://127.0.0.1)
+
+#### (3.9)   Problem solving
+
+1.  Error with `apr_sockaddr_info_get()`: remove the `#` from line `ServerName localhost` in `httpd.conf`
+
+##  (4) Creating the VirtualHosts
+
+#### (4.1)   Open `/private/etc/apache2/extra/httpd-vhosts.conf`
+
+#### (4.2)
+
+```
+<VirtualHost *:80>
+    ServerName localhost
+    DocumentRoot /Library/WebServer/Documents/
+</VirtualHost>
+
+
+<VirtualHost *:80>
+    DocumentRoot "/Users/your_user/Sites"
+    ServerName localhost
+</VirtualHost>
+
+<VirtualHost *:80>
+    DocumentRoot "/Users/your_user/Sites/grav-admin"
+    ServerName grav-admin.dev
+</VirtualHost>
+
+#Virtual Host Entry for bar.localhost
+<VirtualHost *:80>
+  DocumentRoot "/Users/john/Sites/bar"
+  ServerName bar.localhost
+  ErrorLog "/private/var/log/apache2/bar-error_log"
+  CustomLog "/private/var/log/apache2/bar-access_log" common
+  </VirtualHost>
+```
+
+#### (4.3)   Add VirtualHosts to `/etc/hosts`
+
+```
+#Local sites
+127.0.0.1       foo.dev www.foo.dev
+127.0.0.1       bar.dev www.bar.dev
+```
+
+Then run: `sudo dscacheutil -flushcache`
+
+#### (4.4)   Edit `httpd-userdir.conf`
+
+*   Uncomment: `Include /private/etc/apache2/users/*.conf`
+
+#### (4.5)   Restart apache: `sudo apachectl restart`
+
+
+philippa.gilsenan.conf file
+
+##  (X) Tutorials
+
+*   https://getgrav.org/blog/macos-sierra-apache-multiple-php-versions
+*   https://medium.com/@JohnFoderaro/how-to-set-up-apache-in-macos-sierra-10-12-bca5a5dfffba
+*   https://gist.github.com/johnfoderaro/14021081b659bca5848df003de577a11
+*   https://coolestguidesontheplanet.com/how-to-set-up-virtual-hosts-in-apache-on-macos-osx-sierra/
